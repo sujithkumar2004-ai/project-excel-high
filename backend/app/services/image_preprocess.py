@@ -28,9 +28,10 @@ def preprocess_image(original_path: str, output_dir: str | Path | None = None) -
 
     target_dir = Path(output_dir) if output_dir else Path(settings.upload_dir) / "processed"
     target_dir.mkdir(parents=True, exist_ok=True)
-    debug_dir = target_dir / "debug"
+    debug_dir = _debug_dir(target_dir)
     debug_dir.mkdir(parents=True, exist_ok=True)
 
+    _write_image(debug_dir / "original.jpg", image)
     oriented = _auto_orient(image)
     deskewed, angle = _deskew(oriented)
     table = _perspective_correct_table(deskewed)
@@ -46,8 +47,9 @@ def preprocess_image(original_path: str, output_dir: str | Path | None = None) -
     _write_image(processed_path, enhanced)
     _write_image(threshold_path, thresholded)
     _write_image(table_path, table)
-    _write_image(debug_dir / "oriented.png", oriented)
-    _write_image(debug_dir / "deskewed.png", deskewed)
+    _write_image(debug_dir / "deskewed.jpg", deskewed)
+    _write_image(debug_dir / "perspective_corrected.jpg", table)
+    _write_image(debug_dir / "threshold.jpg", thresholded)
 
     return PreprocessResult(
         original_path=original_path,
@@ -55,8 +57,10 @@ def preprocess_image(original_path: str, output_dir: str | Path | None = None) -
         threshold_path=str(threshold_path),
         table_path=str(table_path),
         debug_paths={
-            "oriented": str(debug_dir / "oriented.png"),
-            "deskewed": str(debug_dir / "deskewed.png"),
+            "original": str(debug_dir / "original.jpg"),
+            "deskewed": str(debug_dir / "deskewed.jpg"),
+            "perspective_corrected": str(debug_dir / "perspective_corrected.jpg"),
+            "threshold": str(debug_dir / "threshold.jpg"),
         },
         skew_angle=round(angle, 2),
     )
@@ -173,5 +177,12 @@ def _threshold_for_lines(image: np.ndarray) -> np.ndarray:
 
 
 def _write_image(path: Path, image: np.ndarray) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     if not cv2.imwrite(str(path), image):
         raise HTTPException(status_code=500, detail=f"Failed to save image: {path.name}")
+
+
+def _debug_dir(target_dir: Path) -> Path:
+    if target_dir.name and target_dir.parent.name == "records_v2":
+        return Path(settings.upload_dir) / "debug" / target_dir.name
+    return target_dir / "debug"

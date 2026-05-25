@@ -13,9 +13,11 @@ from pydantic import BaseModel, Field
 
 from app.core.config import settings
 from app.services.excel_export import generate_ot_register_excel
+from app.services.image_quality import assess_image_quality, finalize_quality
 from app.services.image_preprocess import preprocess_image
+from app.services.ml_dataset_service import save_training_samples
 from app.services.ocr_service import ocr_cell
-from app.services.table_detector import REGISTER_COLUMNS, detect_table_cells
+from app.services.table_detector import REGISTER_COLUMNS, detect_table_cells, detect_table_grid
 
 router = APIRouter(prefix="/records", tags=["records"])
 
@@ -45,11 +47,40 @@ async def upload_record(image: UploadFile = File(...)):
     record_dir.mkdir(parents=True, exist_ok=True)
 
     image_path = await _save_upload(image, record_dir)
+    initial_quality = assess_image_quality(image_path)
+    raw_table_detected, _, _ = detect_table_grid(image_path)
     preprocess = preprocess_image(image_path, record_dir)
-    table = detect_table_cells(preprocess.processed_path, record_dir, REGISTER_COLUMNS)
+    table = detect_table_cells(preprocess.threshold_path, record_dir, REGISTER_COLUMNS)
+    debug_paths = {
+        **preprocess.debug_paths,
+        "detected_lines": table.debug_lines_path or "",
+        "detected_cells": table.debug_image_path or "",
+    }
+    quality = finalize_quality(
+        initial_quality,
+        rotation_angle=preprocess.skew_angle,
+        table_detected_raw=raw_table_detected,
+        table_detected_processed=table.table_detected,
+        partial_table_detected=table.partial_table_detected,
+        horizontal_line_count=table.horizontal_line_count,
+        vertical_line_count=table.vertical_line_count,
+        row_count=len(table.rows),
+        column_count=len(table.columns),
+        cell_count=sum(len(row) for row in table.rows),
+    )
+    if not quality.valid:
+        failed = {
+            "record_id": record_id,
+            "message": "Image quality is not sufficient for extraction",
+            "image_quality": quality.to_dict(),
+            "debug_paths": _debug_urls(record_id, debug_paths),
+        }
+        _write_json(record_dir / "quality_failed.json", failed)
+        raise HTTPException(status_code=422, detail=failed)
 
     rows = []
     engines: list[str] = []
+    raw_ocr: list[dict] = []
     cells_dir = record_dir / "cells"
     cells_dir.mkdir(exist_ok=True)
     for row in table.rows:
@@ -59,26 +90,49 @@ async def upload_record(image: UploadFile = File(...)):
             cv2.imwrite(str(cell_path), cell.image)
             result = ocr_cell(cell.image)
             engines.append(result.engine)
+            raw_ocr.append(
+                {
+                    "row_index": cell.row_index,
+                    "column_index": cell.column_index,
+                    "column_name": cell.column_name,
+                    "cell_crop_path": str(cell_path),
+                    "value": result.value,
+                    "confidence": result.confidence,
+                    "uncertain": result.uncertain,
+                    "engine": result.engine,
+                    "bbox": cell.bbox,
+                }
+            )
             payload_row[cell.column_name] = {
                 "value": result.value,
+                "ocr_text": result.value,
+                "original_value": result.value,
                 "confidence": result.confidence,
                 "uncertain": result.uncertain,
                 "edited": False,
+                "cell_crop_path": str(cell_path),
             }
         if _row_has_signal(payload_row):
             rows.append(payload_row)
 
     data = {
         "id": record_id,
+        "record_id": record_id,
+        "ocr_engine": _most_common([engine for engine in engines if engine]) or settings.ocr_engine,
+        "image_quality": quality.to_dict(),
+        "low_quality": bool(quality.metrics.get("low_quality")),
+        "warnings": quality.warnings,
         "columns": REGISTER_COLUMNS,
         "rows": rows,
         "summary": _summary(rows, engines),
         "image_url": f"/records/{record_id}/image",
         "processed_image_url": f"/records/{record_id}/processed-image",
         "processed_path": preprocess.processed_path,
+        "debug_paths": _debug_urls(record_id, debug_paths),
         "created_at": datetime.utcnow().isoformat(),
     }
     _write_json(record_dir / "extracted.json", data)
+    _write_json(record_dir / "raw_ocr.json", {"items": raw_ocr})
     return data
 
 
@@ -100,9 +154,12 @@ def save_corrections(record_id: str, payload: SaveCorrectionsPayload):
             edited = value != original_value
             normalized_row[column] = {
                 "value": value,
+                "ocr_text": str((original_cell or {}).get("ocr_text") or original_value),
+                "original_value": original_value,
                 "confidence": incoming_cell.confidence,
                 "uncertain": bool(incoming_cell.uncertain),
                 "edited": edited or bool(incoming_cell.edited),
+                "cell_crop_path": str((original_cell or {}).get("cell_crop_path") or ""),
             }
         if _row_has_signal(normalized_row):
             normalized_rows.append(normalized_row)
@@ -115,6 +172,7 @@ def save_corrections(record_id: str, payload: SaveCorrectionsPayload):
         "saved_at": datetime.utcnow().isoformat(),
     }
     _write_json(record_dir / "reviewed.json", data)
+    save_training_samples(record_id, normalized_rows)
     return data
 
 
@@ -185,6 +243,36 @@ def get_processed_image(record_id: str):
     return FileResponse(processed_path)
 
 
+@router.get("/{record_id}/cells/{cell_name}")
+def get_cell_crop(record_id: str, cell_name: str):
+    record_dir = _existing_record_dir(record_id)
+    if Path(cell_name).name != cell_name:
+        raise HTTPException(status_code=400, detail="Invalid cell crop name")
+    cell_path = record_dir / "cells" / cell_name
+    if not cell_path.exists():
+        raise HTTPException(status_code=404, detail="Cell crop not found")
+    return FileResponse(cell_path)
+
+
+@router.get("/{record_id}/debug/{debug_name}")
+def get_debug_image(record_id: str, debug_name: str):
+    _existing_record_dir(record_id)
+    allowed = {
+        "original.jpg",
+        "deskewed.jpg",
+        "perspective_corrected.jpg",
+        "threshold.jpg",
+        "detected_lines.jpg",
+        "detected_cells.jpg",
+    }
+    if debug_name not in allowed:
+        raise HTTPException(status_code=400, detail="Invalid debug image name")
+    debug_path = Path(settings.upload_dir) / "debug" / record_id / debug_name
+    if not debug_path.exists():
+        raise HTTPException(status_code=404, detail="Debug image not found")
+    return FileResponse(debug_path)
+
+
 async def _save_upload(file: UploadFile, record_dir: Path) -> str:
     content_type = file.content_type or ""
     if content_type not in ALLOWED_IMAGE_TYPES:
@@ -218,11 +306,22 @@ def _summary(rows: list[dict], engines: list[str]) -> dict:
     engine = _most_common([engine for engine in engines if engine]) or "none"
     return {
         "total_rows": len(rows),
+        "total_cells": sum(len(row) for row in rows),
+        "uncertain_cells": uncertain_count,
         "uncertain_cells_count": uncertain_count,
         "edited_cells_count": edited_count,
         "average_confidence": round(mean(confidences), 3) if confidences else 0.0,
         "ocr_engine_used": engine,
     }
+
+
+def _debug_urls(record_id: str, debug_paths: dict[str, str]) -> dict[str, str]:
+    urls: dict[str, str] = {}
+    for key, path in debug_paths.items():
+        name = Path(path).name if path else ""
+        if name:
+            urls[key] = f"/records/{record_id}/debug/{name}"
+    return urls
 
 
 def _row_has_signal(row: dict[str, dict]) -> bool:

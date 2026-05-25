@@ -427,6 +427,68 @@ th { background: #f8fafc; color: var(--text-secondary); font-size: 13px; positio
   color: var(--primary-strong);
   font-weight: 750;
 }
+.quality-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+.quality-panel.ok { background: #f0fdf4; border-color: #bbf7d0; }
+.quality-panel.error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+.quality-panel.neutral { background: #f8fafc; color: var(--text-secondary); }
+.quality-score {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+.quality-score span { color: var(--text-secondary); font-weight: 750; }
+.quality-score strong { font-size: 22px; }
+.quality-panel dl {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+.quality-panel dt { color: var(--text-secondary); font-size: 12px; font-weight: 750; }
+.quality-panel dd { font-weight: 800; margin: 0; }
+.quality-panel p { margin: 0; }
+.debug-card {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+.debug-card.failed {
+  border-color: #fbbf24;
+}
+.debug-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.debug-tile {
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text-primary);
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  text-decoration: none;
+}
+.debug-tile span {
+  font-size: 13px;
+  font-weight: 800;
+}
+.debug-tile img {
+  aspect-ratio: 4 / 3;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  object-fit: contain;
+  width: 100%;
+}
 .ot-review-card .section-heading {
   align-items: center;
 }
@@ -480,6 +542,33 @@ th { background: #f8fafc; color: var(--text-secondary); font-size: 13px; positio
   height: 14px;
   width: 14px;
 }
+.cell-crop-link {
+  color: var(--primary-strong);
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 800;
+  margin-top: 6px;
+  position: relative;
+}
+.cell-crop-link img {
+  background: white;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+  display: none;
+  left: 0;
+  max-height: 110px;
+  max-width: 260px;
+  object-fit: contain;
+  padding: 4px;
+  position: absolute;
+  top: 20px;
+  z-index: 10;
+}
+.cell-crop-link:hover img,
+.cell-crop-link:focus img {
+  display: block;
+}
 .ot-empty-state {
   background: #f8fafc;
   border: 1px dashed var(--line-strong);
@@ -514,7 +603,7 @@ th { background: #f8fafc; color: var(--text-secondary); font-size: 13px; positio
 .toast button { background: transparent; border: 0; cursor: pointer; }
 
 @media (max-width: 1100px) {
-  .local-register-layout, .records-review-layout, .record-status-card dl, .ot-top-grid { grid-template-columns: 1fr; }
+  .local-register-layout, .records-review-layout, .record-status-card dl, .ot-top-grid, .debug-grid { grid-template-columns: 1fr; }
   .record-image-panel { max-height: none; position: static; }
 }
 

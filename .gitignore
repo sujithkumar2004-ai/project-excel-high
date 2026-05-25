@@ -19,4 +19,6 @@ backend/.venv312/
 backend/debug*.png
 backend/tmp_processed_*.jpg
 backend/*.db
+models/
+backend/models/
 .DS_Store
