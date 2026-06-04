@@ -2,13 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.db.base import Base
-from app.db.session import engine
-from app.routers.record_router import router as record_router
-from app.routes.ml_dataset import router as ml_dataset_router
-from app.routes.ot_register import router as ot_register_router
-from app.routes.records import router as records_router
-from app.routes.upload import router as upload_router
+from app.routes.auth import router as auth_router
+from app.routes.image_extraction import router as image_extraction_router
 
 
 def create_app() -> FastAPI:
@@ -20,19 +15,15 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.include_router(ot_register_router)
-    app.include_router(records_router)
-    app.include_router(ml_dataset_router)
-    app.include_router(upload_router)
-    app.include_router(record_router)
-
-    @app.on_event("startup")
-    def create_tables_for_dev() -> None:
-        if settings.auto_create_tables:
-            Base.metadata.create_all(bind=engine)
+    app.include_router(auth_router)
+    app.include_router(image_extraction_router)
 
     @app.get("/health")
     def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.get("/api/health")
+    def api_health() -> dict[str, str]:
         return {"status": "ok"}
 
     return app

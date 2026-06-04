@@ -6,8 +6,8 @@ import { ToastProvider } from "@/components/ui/Toast";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Project Excel Records",
-  description: "Hospital records upload, extraction, review, and Excel export"
+  title: "Project Excel",
+  description: "Extract structured JSON from an uploaded image"
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -17,12 +17,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <ToastProvider>
           <div className="app-shell">
             <header className="app-header">
-              <Link href="/records/batches" className="brand">
+              <Link href="/records/upload" className="brand">
                 <FileSpreadsheet size={22} aria-hidden />
                 <span>Project Excel</span>
               </Link>
               <nav>
-                <Link href="/records/batches">Batches</Link>
                 <Link href="/records/upload">
                   <Upload size={16} aria-hidden /> Upload
                 </Link>

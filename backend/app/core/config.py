@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     upload_dir: str = "uploads"
     export_dir: str = "exports"
     max_upload_mb: int = Field(default=25, ge=1, le=200)
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4.1-mini"
+    app_login_username: str = "SK001"
+    app_login_password: str = "SK001@123"
     ocr_engine: str = "paddleocr"
     trocr_model_name: str = "microsoft/trocr-base-handwritten"
     trocr_finetuned_model_dir: str = "models/trocr-ot-register"
